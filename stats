@@ -1,0 +1,190 @@
+#!/bin/bash
+
+# stats script
+# 	By Ava
+
+# 	A bash shell script to calculate mean averages and medians of numbers that can be input from either a file
+# or via stdin. The input will have whole number values separated by tabs, and each line will have the same number
+# of values. Calculates the mean and median across the rows or down the columns.
+
+# Usage:
+	# stats {-rows|-cols} [input_file]
+
+# Some code adapted from https://oregonstate.instructure.com/courses/1648339/pages/1-dot-4-shell-script-compendium
+
+# Declare temp files and trap statement to clear them on CTRL-C
+tempRow="temprowfile$$"
+tempCol="tempcolfile$$"
+tempInput="tempinpfile$$"
+
+trap "rm -rf ./temp???file$$* ; echo 'Program interrupted: Deleting temporary files and exiting!'; exit 1" INT HUP TERM
+
+
+datapath="tempdatfile$$"
+# Should also be able to accept data via stdin!
+# If there are the correct number of arguments
+# If there is one arg
+if [[ $# = 1 ]]; then
+	# cat the data in from stdin
+	cat > "$datapath"
+
+# If there are two args
+elif [[ $# = 2 ]]; then	
+	# set data file path to 2nd arg
+	datapath=$2
+
+# else cat out the usage to standard error, delete the temp files, and exit with status 1.
+else
+	echo "./stats {-rows|-cols} [file]" >&2
+	rm -rf ./temp???file$$*
+	exit 1
+fi
+
+# Test that the data file is readable
+if [ -r $datapath ]; then
+
+	# If the switch matches "-r*"
+	if [[ $1 == -r* ]]; then
+
+		# set the redirection variable to system arg 2
+		input=$datapath
+
+	# else if the switch matches "-c*"
+	elif [[ $1 == -c* ]]; then
+
+		# turn the columns into a row file
+	    while read thisLine; do
+			
+			# input line into a row file
+			echo $thisLine > $tempInput
+
+			# each column gets a temporary row file
+			col=1
+
+			for i in $thisLine; do
+				# Append the column number onto the end of each file
+				cut -d ' ' -f $col $tempInput >> $tempRow$$$col
+				col=$(expr $col + 1)
+			done
+
+		done < $datapath
+
+		# The temporary input file gets cleared; its previous purpose has been served.
+		> $tempInput
+
+		# each file then gets transformed from a single column back to a row
+		# put all the rows back together into the temporary input file
+		row=1
+
+		while [[ $row < $col ]]; do
+			tr '\n' '\t' < $tempRow$$$row >> $tempInput
+			# add a new line at the end of each row
+			echo "" >> $tempInput
+			row=$(expr $row + 1)
+		done
+
+		# set the redirection variable to the new row file
+		input=$tempInput
+
+	# else cat out the usage to standard error, delete the temp files, and exit with status 1.
+	else
+		echo "./stats {-rows|-cols} [file]" >&2
+		rm -rf ./temp???file$$*
+		exit 1
+	fi
+
+	# Set a line counter variable and begin reading the lines one by one.
+	line=0
+
+	# Read through each line in the file
+	while read thisLine; do
+		# Set an element counter and variable to calculated the total
+	    count=0
+	    total=0
+	    # Increment the line counter on every iteration (i.e. line read)
+	    line=$(expr $line + 1)
+
+	    # For each element in the line
+	    for i in $thisLine; do
+	    	# Calculate the running total and increment the element counter
+	        num=$i
+	        count=$(expr $count + 1)
+	        total=$(expr $total + $num)
+	    done
+
+		# formula to divide two numbers with proper rounding: (a + (b/2)) / b
+	    avg=$(( ( $total + ( $count / 2 ) ) / $count ))
+
+		# Check if the list has an even or odd number of elements
+		mod=$(expr $count % 2)
+
+		# If there are two median (i.e. an even number of elements)
+		if [[ $mod == 0 ]]; then
+	    	# use the larger of the two (i.e. the second one)
+	    	half=$(( $count / 2 ))
+	    else
+	    	# otherwise, grab the middle element
+	    	half=$(( ( $count + 1 ) / 2 ))
+	    fi
+
+		# use tr, sort, tail, and head to find the median
+	    mdn=$( echo $thisLine | tr ' ' '\n' | sort -n | tail -n $half | head -n 1 )	    	
+
+		# If the switch matches "-r*"
+		if [[ $1 == -r* ]]; then
+
+			if [[ $line -ne 1 ]]; then
+				# output the results in the correct format (rows
+				data="$data\n$avg\t$mdn"
+			else
+				data="$avg\t$mdn"
+			fi
+
+		# else if the switch matches "-c*"
+		elif [[ $1 == -c* ]]; then
+
+			if [[ $line -ne 1 ]]; then
+				# output the results in the correct format (cols)
+				avgs="$avgs\t$avg"
+				mdns="$mdns\t$mdn"
+			else
+				avgs="$avg"
+				mdns="$mdn"
+			fi
+
+		fi
+
+	done < $input
+
+	# If the switch matches "-r*"
+	if [[ $1 == -r* ]]; then
+
+		echo -e "Average\tMedian"
+		echo -e $data
+
+	# else if the switch matches "-c*"
+	elif [[ $1 == -c* ]]; then
+
+		echo "Averages:"
+		echo -e $avgs
+		echo "Medians:"
+		echo -e $mdns
+
+	fi
+
+# Else (the file is not readable), cat out the a "./stats: cannot read [input_file]" error
+# 	to standard error, delete the temp files, and exit with status 1.
+else
+	echo "./stats: cannot read $datapath" >&2
+	rm -rf ./temp???file$$*
+	exit 1
+fi
+
+
+# Delete temp files and exit with status 0
+rm -rf ./temp???file$$*
+exit 0
+
+
+
+
